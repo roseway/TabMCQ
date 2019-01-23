@@ -26,6 +26,13 @@ row = []
 idx2table = {}
 tab2idx = {}
 i = 0
+## title
+#for t in table_idx:
+#    row.append(table_idx[t])
+#    idx2table[i] = t
+#    tab2idx[t] = i
+#    i += 1
+
 # # keep uppercase header
 # for t in table_idx:
 #     header = list(tables[t])
@@ -45,19 +52,19 @@ i = 0
 #     idx2table[i] = t
 #     i += 1
 
-# replace first row with header
-for t in table_idx:
-    header = list(tables[t])
-    temp = []
-    for h, c in zip(header, tables[t].iloc[0]):
-        if h.startswith('Unnamed'):
-            temp.append(c)
-        else:
-            temp.append(h)
-    row.append(" ".join(temp))
-    idx2table[i] = t
-    tab2idx[t] = i
-    i += 1
+## replace first row with header
+#for t in table_idx:
+#    header = list(tables[t])
+#    temp = []
+#    for h, c in zip(header, tables[t].iloc[0]):
+#        if h.startswith('Unnamed'):
+#            temp.append(c)
+#        else:
+#            temp.append(h)
+#    row.append(" ".join(temp))
+#    idx2table[i] = t
+#    tab2idx[t] = i
+#    i += 1
 
 # # keep first row
 # for t in table_idx:
@@ -66,6 +73,38 @@ for t in table_idx:
 #     tab2idx[t] = i
 #     i += 1
 
+## title + first row
+#for t in table_idx:
+#    row.append(table_idx[t] + " " + " ".join(tables[t].iloc[0]))
+#    idx2table[i] = t
+#    tab2idx[t] = i
+#    i += 1
+
+## title + first row (replaced)
+#for t in table_idx:
+#    header = list(tables[t])
+#    temp = []
+#    for h, c in zip(header, tables[t].iloc[0]):
+#        if h.startswith('Unnamed'):
+#            temp.append(c)
+#        else:
+#            temp.append(h)
+#    row.append(table_idx[t] + " " + " ".join(temp))
+#    idx2table[i] = t
+#    tab2idx[t] = i
+#    i += 1
+    
+# title + header + first row
+for t in table_idx:
+    header = list(tables[t])
+    temp = []
+    for h, c in zip(header, tables[t].iloc[0]):
+        if not h.startswith('Unnamed'):
+            temp.append(h)
+    row.append(table_idx[t] + " " + " ".join(temp) + " ".join(tables[t].iloc[0]))
+    idx2table[i] = t
+    tab2idx[t] = i
+    i += 1
 q_emb = np.loadtxt('q_embedding.txt')
 
 module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/3"
