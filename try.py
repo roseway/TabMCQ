@@ -30,7 +30,7 @@ for idx, q in enumerate(questions):
 		count += 1
 	else:
 		print(idx, cell, choices)
-print(count/len(questions))		# 96%. Wrong cases are because of wrong annotations
+print(count/len(questions))		# 96%. Most wrong cases are because of wrong annotations
 
 #Check if value in question
 #counter = collections.Counter()
