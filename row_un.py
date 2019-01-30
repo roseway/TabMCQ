@@ -26,12 +26,14 @@ for q in questions:
         can = 0
         for idx, cell in enumerate(table.iloc[:, col]):
             temp = fuzz.ratio(str(cell).strip().lower(), choice)
-            if temp>mx:
+            if temp > mx:
                 mx = temp
                 can = idx
         cand_rows.append(can)
 
     # Find the row with longest common substring
+    # for idx, row in table.iterrows():
+    #     row = [str(temp) for temp in row]
     for idx in cand_rows:
         row = [str(temp) for temp in table.iloc[idx]]
         row = " ".join(row)
