@@ -2,7 +2,6 @@ from utils import *
 import collections
 from difflib import SequenceMatcher
 import time
-from fuzzywuzzy import fuzz
 
 time_start = time.time()
 
@@ -20,30 +19,20 @@ for q in questions:
     col = int(q[9])
     cand_rows = []
 
-    # Extract relevant rows with the four choices. Results in much faster execution but lower accuracy
-    for choice in choices:
-        mx = -1
-        can = 0
-        for idx, cell in enumerate(table.iloc[:, col]):
-            temp = fuzz.ratio(str(cell).strip().lower(), choice)
-            if temp > mx:
-                mx = temp
-                can = idx
-        cand_rows.append(can)
-
     # Find the row with longest common substring
-    # for idx, row in table.iterrows():
-    #     row = [str(temp) for temp in row]
-    for idx in cand_rows:
-        row = [str(temp) for temp in table.iloc[idx]]
+    for idx, row in table.iterrows():
+        row = [str(temp) for temp in row]
         row = " ".join(row)
         row = " ".join(row.split()).lower()
         l = SequenceMatcher(None, qu, row).find_longest_match(0, len(qu), 0, len(row)).size
-        if l > ml:
-            ml = l
+        tt = 0
+        for choice in choices:
+            tt = max(tt, SequenceMatcher(None, choice, row).find_longest_match(0, len(choice), 0, len(row)).size)
+        if l + tt > ml:
+            ml = l + tt
             r = idx + 1
     if r == int(q[8]):
         count += 1
 print(count / len(questions))
 time_end = time.time()
-print('totally cost', time_end - time_start)
+print('Time cost', time_end - time_start)
