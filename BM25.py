@@ -7,10 +7,12 @@ import collections
 
 def main():
     questions, tables, table_idx = load_data()
-    test = ['regents-05&09', 'regents-07', 'regents-08', 'regents-10', 'regents-24', 'regents-31',
-            'regents-37', 'monarch-44', 'monarch-49', 'monarch-50', 'monarch-56', 'monarch-63']
+    test = ['regents-02', 'regents-07', 'regents-10', 'regents-17', 'regents-19', 'regents-24', 'regents-25&26',
+            'regents-34', 'regents-40', 'monarch-46', 'monarch-50', 'monarch-53', 'monarch-62', 'monarch-64',
+            'monarch-67']
 
-    queries = [nltk.word_tokenize(q[0].lower()) for q in questions if q[7] in test]
+    queries = [nltk.word_tokenize(q[0].lower() + " ".join(q[2:6]).lower()) for q in questions if q[7] in test]
+    # print(queries)
     reltable = [q[7] for q in questions if q[7] in test]
     corpus = {}
 
@@ -37,15 +39,15 @@ def main():
     for i in range(len(results)):
         count[reltable[i]] += 1
         if results[i]:
-            sorted_x = sorted(results[i].items(), key=operator.itemgetter(1))
-            res = sorted_x[-1][0]
-            if res == reltable[i]:
+            sorted_x = sorted(results[i].items(), key=operator.itemgetter(1), reverse=True)
+            res = [x[0] for x in sorted_x[:1]]
+            if reltable[i] in res:
                 correct += 1
             else:
                 wrong[reltable[i]] += 1
     print(correct / len(queries))
-    # for t in test:
-    #     print(t, wrong[t]/count[t])
+    for t in test:
+        print(t, wrong[t] / count[t])
 
 
 if __name__ == '__main__':
