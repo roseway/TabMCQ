@@ -7,6 +7,7 @@ import collections
 import nltk
 from difflib import SequenceMatcher
 
+
 def main():
     questions, tables, table_idx = load_data()
 
@@ -39,6 +40,7 @@ def main():
 
     train_queries = [nltk.word_tokenize(q[0].lower()) for q in train_questions]
 
+    # Compute bm25 scores and idf scores
     cap_bm25 = QueryProcessor(train_queries, cap_corpus)
     cap_results = cap_bm25.run()
     cap_idf = cap_bm25.idf()
@@ -75,33 +77,43 @@ def main():
         header = " ".join(headerc)
         body = " ".join(bodyc)
 
-        x.append(len(q_tok))  # Query length
+        # Query length
+        x.append(len(q_tok))
 
-        x.append(cap_idf[i])  # Sum of query idf score
-        x.append(header_idf[i])  # Sum of query idf score
-        x.append(cell_idf[i])  # Sum of query idf score
+        # Idf scores
+        x.append(cap_idf[i])
+        x.append(header_idf[i])
+        x.append(cell_idf[i])
 
-        x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size/len(que))
-        x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size/len(que))
-        x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size/len(que))
+        # LCS normalized by length of query
+        x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+        x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+        x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
 
-        x.append(sum([capc[tok]/sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-        x.append(sum([headerc[tok]/sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-        x.append(sum([bodyc[tok]/sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+        # Sum of term frequency
+        x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]))
+        x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+        x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-        x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-        x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-        x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+        # Max of term frequency
+        x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))
+        x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+        x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-        x.append(sum([capc[tok]/sum(capc.values()) for tok in q_tok])/len(q_tok))  # Term frequency in cap
-        x.append(sum([headerc[tok]/sum(headerc.values()) for tok in q_tok])/len(q_tok)) # Term frequency in header
-        x.append(sum([bodyc[tok]/sum(bodyc.values()) for tok in q_tok])/len(q_tok))  # Term frequency in body
+        # Average of term frequency
+        x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]) / len(q_tok))
+        x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]) / len(q_tok))
+        x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]) / len(q_tok))
 
+        # BM25 scores
         x.append(cap_results[i][tab])
         x.append(header_results[i][tab])
         x.append(cell_results[i][tab])
+
         trainx.append(x)
         trainy.append(1)
+
+        # Negative samples
         neg_samp = random.sample(train, 2)
         while neg_samp[0] == tab or neg_samp[1] == tab:
             neg_samp = random.sample(train, 2)
@@ -125,34 +137,43 @@ def main():
             header = " ".join(headerc)
             body = " ".join(bodyc)
 
-            x.append(len(q_tok))  # Query length
+            # Query length
+            x.append(len(q_tok))
 
-            x.append(cap_idf[i])  # Sum of query idf score
-            x.append(header_idf[i])  # Sum of query idf score
-            x.append(cell_idf[i])  # Sum of query idf score
+            # Idf scores
+            x.append(cap_idf[i])
+            x.append(header_idf[i])
+            x.append(cell_idf[i])
 
-            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size/len(que))
-            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size/len(que))
-            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size/len(que))
+            # LCS normalized by length of query
+            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
 
-            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+            # Sum of term frequency
+            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]))
+            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-            x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-            x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-            x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+            # Max of term frequency
+            x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))
+            x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+            x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in cap
-            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in header
-            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in body
+            # Average of term frequency
+            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]) / len(q_tok))
+            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]) / len(q_tok))
+            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]) / len(q_tok))
 
+            # BM25 scores
             x.append(cap_results[i][tab])
             x.append(header_results[i][tab])
             x.append(cell_results[i][tab])
 
             trainx.append(x)
             trainy.append(0)
+
+    # Train
     inplen = len(trainx[0])
     trainx = np.array(trainx)
     trainy = np.array(trainy)
@@ -163,15 +184,14 @@ def main():
     model.add(Dense(16, input_shape=(inplen,), activation='sigmoid'))
     model.add(Dense(1, activation='sigmoid'))
     model.summary()
-    # Compile model
     model.compile(optimizer='adam', loss='mse')
     model.fit(trainx, trainy, validation_split=0.2, batch_size=200, epochs=50)
 
+    # Test
     cap_corpus = {}
     header_corpus = {}
     cell_corpus = {}
 
-    # BM25 scores
     for t in test:
         table = tables[t]
         cap_corpus[t] = nltk.word_tokenize(table_idx[t].lower())
@@ -230,31 +250,39 @@ def main():
             header = " ".join(headerc)
             body = " ".join(bodyc)
 
-            x.append(len(q_tok))  # Query length
+            # Query length
+            x.append(len(q_tok))
 
-            x.append(cap_idf[i])  # Sum of query idf score
-            x.append(header_idf[i])  # Sum of query idf score
-            x.append(cell_idf[i])  # Sum of query idf score
+            # Idf scores
+            x.append(cap_idf[i])
+            x.append(header_idf[i])
+            x.append(cell_idf[i])
 
-            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size/len(que))
-            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size/len(que))
-            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size/len(que))
+            # LCS normalized by length of query
+            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
 
-            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+            # Sum of term frequency
+            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]))
+            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-            x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))  # Term frequency in cap
-            x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))  # Term frequency in header
-            x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))  # Term frequency in body
+            # Max of term frequency
+            x.append(max([capc[tok] / sum(capc.values()) for tok in q_tok]))
+            x.append(max([headerc[tok] / sum(headerc.values()) for tok in q_tok]))
+            x.append(max([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]))
 
-            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in cap
-            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in header
-            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]) / len(q_tok))  # Term frequency in body
+            # Average of term frequency
+            x.append(sum([capc[tok] / sum(capc.values()) for tok in q_tok]) / len(q_tok))
+            x.append(sum([headerc[tok] / sum(headerc.values()) for tok in q_tok]) / len(q_tok))
+            x.append(sum([bodyc[tok] / sum(bodyc.values()) for tok in q_tok]) / len(q_tok))
 
+            # BM25 scores
             x.append(cap_results[i][tab])
             x.append(header_results[i][tab])
             x.append(cell_results[i][tab])
+
             testx.append(x)
         testx = np.array(testx)
         pre = model.predict(testx).reshape(1, -1)
