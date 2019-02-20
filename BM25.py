@@ -7,12 +7,13 @@ import collections
 
 def main():
     questions, tables, table_idx = load_data()
-    test = ['regents-02', 'regents-07', 'regents-10', 'regents-17', 'regents-19', 'regents-24', 'regents-25&26',
-            'regents-34', 'regents-40', 'monarch-46', 'monarch-50', 'monarch-53', 'monarch-62', 'monarch-64',
-            'monarch-67']
+    test = ['regents-02', 'regents-03', 'regents-08', 'regents-13', 'regents-17', 'regents-19', 'regents-22',
+            'regents-25&26', 'regents-42', 'monarch-44', 'monarch-47', 'monarch-50', 'monarch-53', 'monarch-57',
+            'monarch-62', 'monarch-64']
+    # test = [t for t in table_idx if t not in train]
 
-    queries = [nltk.word_tokenize(q[0].lower() + " ".join(q[2:6]).lower()) for q in questions if q[7] in test]
-    # print(queries)
+    # test = list(table_idx)
+    queries = [nltk.word_tokenize(q[0].lower() + " " + " ".join(q[2:6])) for q in questions if q[7] in test]
     reltable = [q[7] for q in questions if q[7] in test]
     corpus = {}
 
@@ -23,7 +24,7 @@ def main():
         cells = table.applymap(str).values
         body = ""
         for row in cells:
-            body += " ".join(row)
+            body += " ".join(row) + " "
         temp = []
         for h in header:
             if not h.startswith('Unnamed'):
