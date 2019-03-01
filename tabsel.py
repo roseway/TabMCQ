@@ -1,173 +1,455 @@
 from utils import *
-import collections
-from sklearn.utils import shuffle
-from keras.preprocessing.text import Tokenizer
+from bm25.query import QueryProcessor
 import random
-from keras.preprocessing.sequence import pad_sequences
-from keras.models import Model, load_model
-from keras.layers import Dense, Dropout, Embedding, LSTM, Bidirectional, Input, dot, Conv1D, MaxPooling1D, Flatten, \
-    concatenate
-from keras.callbacks import ModelCheckpoint
+from keras.layers import Dense
+from keras.models import Sequential
+import collections
+import nltk
+from difflib import SequenceMatcher
+from statistics import mean
+import Levenshtein
+import string
 
 
-def lstm_model(embeddingMatrix):
-    q_input = Input(shape=(q_inp_len,))
-    t_input = Input(shape=(q_inp_len,))
+def main():
+    USEANSWER = True
+    random.seed(5)
+    questions, tables, table_idx = load_data()
+    test = ['regents-02', 'regents-03', 'regents-08', 'regents-13', 'regents-17', 'regents-19', 'regents-22',
+            'regents-25&26', 'regents-42', 'monarch-44', 'monarch-47', 'monarch-50', 'monarch-53', 'monarch-57',
+            'monarch-62', 'monarch-64']
+    train = [t for t in table_idx if t not in test]
+    punc_table = str.maketrans({key: None for key in string.punctuation})
 
-    embedding_layer = Embedding(embeddingMatrix.shape[0], 300, weights=[embeddingMatrix],
-                                input_length=q_inp_len, trainable=False, mask_zero=True)
-    q_encode = embedding_layer(q_input)
-    q_encode = LSTM(64, unroll=True)(q_encode)
-    q_encode = Dense(32, activation="tanh")(q_encode)
+    trainx, trainy = [], []
+    train_questions = [q for q in questions if q[7] in train]
+    test_questions = [q for q in questions if q[7] in test]
 
-    t_encode = embedding_layer(t_input)
-    t_encode = LSTM(64, unroll=True)(t_encode)
-    t_encode = Dense(32, activation="tanh")(t_encode)
+    cap_corpus = {}
+    header_corpus = {}
+    cell_corpus = {}
+    for t in train:
+        table = tables[t]
+        cap_corpus[t] = nltk.word_tokenize(table_idx[t].translate(punc_table).lower())
+        header = list(table)
+        temp = []
+        for h in header:
+            if not h.startswith('Unnamed'):
+                temp += nltk.word_tokenize(h.translate(punc_table).lower())
+        header_corpus[t] = temp
+        cells = table.applymap(str).values
+        body = ""
+        for row in cells:
+            body += " ".join(row) + " "
+        cell_corpus[t] = nltk.word_tokenize(body.translate(punc_table).lower())
 
-    similarity = dot([q_encode, t_encode], axes=1, normalize=True)
-    output = Dense(1, activation='tanh')(similarity)
+    vocab = []
+    for t in train:
+        vocab += cap_corpus[t]
+        vocab += header_corpus[t]
+        vocab += cell_corpus[t]
+    vocab = set(vocab)
 
-    model = Model(inputs=[q_input, t_input], outputs=[output])
-    model.compile(optimizer='adam', loss='mse')
-    model.summary()
-    return model
+    if USEANSWER:
+        train_queries = [nltk.word_tokenize(
+            q[0].translate(punc_table).lower() + " " + " ".join(q[2:6]).translate(punc_table).lower()) for q in
+                         train_questions]
+    else:
+        train_queries = [nltk.word_tokenize(q[0].translate(punc_table).lower()) for q in train_questions]
 
+    # Compute bm25 scores and idf scores
+    cap_bm25 = QueryProcessor(train_queries, cap_corpus)
+    cap_results = cap_bm25.run()
+    cap_idf = cap_bm25.idf()
 
-def cnn_model(embeddingMatrix):
-    q_input = Input(shape=(q_inp_len,))
-    t_input = Input(shape=(q_inp_len,))
+    header_bm25 = QueryProcessor(train_queries, header_corpus)
+    header_results = header_bm25.run()
+    header_idf = header_bm25.idf()
 
-    embedding_layer = Embedding(embeddingMatrix.shape[0], 300, weights=[embeddingMatrix],
-                                input_length=q_inp_len, trainable=False, mask_zero=False)
-    q_encode = embedding_layer(q_input)
-    q_encode1 = Conv1D(filters=32, kernel_size=2, activation='tanh')(q_encode)
-    q_encode1 = MaxPooling1D(pool_size=2)(q_encode1)
-    q_encode1 = Flatten()(q_encode1)
+    cell_bm25 = QueryProcessor(train_queries, cell_corpus)
+    cell_results = cell_bm25.run()
+    cell_idf = cell_bm25.idf()
 
-    q_encode2 = Conv1D(filters=32, kernel_size=3, activation='tanh')(q_encode)
-    q_encode2 = MaxPooling1D(pool_size=2)(q_encode2)
-    q_encode2 = Flatten()(q_encode2)
+    for i in range(len(train_questions)):
+        q = train_questions[i]
+        q_tok = train_queries[i]
+        tab = q[7]
+        table = tables[tab]
 
-    q_encode3 = Conv1D(filters=32, kernel_size=5, activation='tanh')(q_encode)
-    q_encode3 = MaxPooling1D(pool_size=2)(q_encode3)
-    q_encode3 = Flatten()(q_encode3)
+        cap = cap_corpus[tab]
+        header = header_corpus[tab]
+        body = cell_corpus[tab]
 
-    q_merged = concatenate([q_encode1, q_encode2, q_encode3])
-    q_merged = Dense(32, activation="tanh")(q_merged)
+        capc = collections.Counter(cap)
+        headerc = collections.Counter(header)
+        bodyc = collections.Counter(body)
 
-    t_encode = embedding_layer(t_input)
-    t_encode1 = Conv1D(filters=32, kernel_size=2, activation='tanh')(t_encode)
-    t_encode1 = MaxPooling1D(pool_size=2)(t_encode1)
-    t_encode1 = Flatten()(t_encode1)
+        x = list()
+        # Query length
+        x.append(len(q_tok))
 
-    t_encode2 = Conv1D(filters=32, kernel_size=3, activation='tanh')(t_encode)
-    t_encode2 = MaxPooling1D(pool_size=2)(t_encode2)
-    t_encode2 = Flatten()(t_encode2)
+        # Sum of idf scores
+        x.append(sum(cap_idf[i]))
+        x.append(sum(header_idf[i]))
+        x.append(sum(cell_idf[i]))
 
-    t_encode3 = Conv1D(filters=32, kernel_size=5, activation='tanh')(t_encode)
-    t_encode3 = MaxPooling1D(pool_size=2)(t_encode3)
-    t_encode3 = Flatten()(t_encode3)
+        # Max of idf scores
+        x.append(max(cap_idf[i]))
+        x.append(max(header_idf[i]))
+        x.append(max(cell_idf[i]))
 
-    t_merged = concatenate([t_encode1, t_encode2, t_encode3])
-    t_merged = Dense(32, activation="tanh")(t_merged)
+        # Average of idf scores
+        x.append(mean(cap_idf[i]))
+        x.append(mean(header_idf[i]))
+        x.append(mean(cell_idf[i]))
 
-    similarity = dot([q_merged, t_merged], axes=1, normalize=True)
-    output = Dense(1, activation='tanh')(similarity)
+        # Num of columns
+        x.append(len(list(table)))
 
-    model = Model(inputs=[q_input, t_input], outputs=[output])
-    model.compile(optimizer='adam', loss='mse')
-    model.summary()
-    return model
+        # LCS normalized by length of query
+        que = " ".join(q_tok)
+        cap = " ".join(cap)
+        header = " ".join(header)
+        body = " ".join(body)
 
+        x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+        x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+        x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
 
-questions, tables, table_idx = load_data()
+        # Term frequency
+        cap_tf = [capc[tok] / sum(capc.values()) for tok in q_tok]
+        header_tf = [headerc[tok] / sum(headerc.values()) for tok in q_tok]
+        body_tf = [bodyc[tok] / sum(bodyc.values()) for tok in q_tok]
 
-acc1 = []
-acc2 = []
-acc3 = []
+        # Sum of term frequency
+        x.append(sum(cap_tf))
+        x.append(sum(header_tf))
+        x.append(sum(body_tf))
 
-wrong = collections.Counter()
+        # Max of term frequency
+        x.append(max(cap_tf))
+        x.append(max(header_tf))
+        x.append(max(body_tf))
 
-for i in range(5):
-    questions = shuffle(questions, random_state=i)
-    q_inp = []
-    t_inp = []
-    label = []
+        # Average of term frequency
+        x.append(mean(cap_tf))
+        x.append(mean(header_tf))
+        x.append(mean(body_tf))
 
-    for q in questions[:8000]:
-        q_inp.append(q[0])
-        t_inp.append(table_idx[q[7]] + " " + " ".join(tables[q[7]].iloc[0]))
-        label.append(1)
-        neg_samp = random.sample(list(table_idx), 2)
-        for smp in neg_samp:
-            q_inp.append(q[0])
-            t_inp.append(table_idx[smp] + " " + " ".join(tables[smp].iloc[0]))
-            if smp == q[7]:
-                label.append(1)
-            else:
-                label.append(0)
-    tokenizer = Tokenizer(oov_token='UNK')
-    tokenizer.fit_on_texts(q_inp)
-    tokenizer.fit_on_texts(t_inp)
-    q_inp = tokenizer.texts_to_sequences(q_inp)
-    q_inp_len = max([len(s) for s in q_inp])
-    q_inp = pad_sequences(q_inp, maxlen=q_inp_len, padding='post')
+        # BM25 scores
+        x.append(cap_results[i][tab])
+        x.append(header_results[i][tab])
+        x.append(cell_results[i][tab])
 
-    t_inp = tokenizer.texts_to_sequences(t_inp)
-    t_inp_len = max([len(s) for s in t_inp])
-    t_inp = pad_sequences(t_inp, maxlen=q_inp_len, padding='post')
-    wordIndex = tokenizer.word_index
-    embeddingMatrix = getEmbeddingMatrix(wordIndex)
+        # Fix typo
+        cap_typo = []
+        header_typo = []
+        cell_typo = []
+        for tok in q_tok:
+            if tok not in vocab:
+                cap_typo.append(max(Levenshtein.ratio(tok, cc) for cc in capc))
+                header_typo.append(max(Levenshtein.ratio(tok, cc) for cc in headerc))
+                cell_typo.append(max(Levenshtein.ratio(tok, cc) for cc in bodyc))
 
-    # Fit network
-    model = lstm_model(embeddingMatrix)
-    checkpoint = ModelCheckpoint('lstm.h5', monitor='val_loss', verbose=1, save_best_only=True,
-                                 mode='auto')
-    callbacks_list = [checkpoint]
-    model.fit([q_inp, t_inp], label, validation_split=0.2, batch_size=200, epochs=20, callbacks=callbacks_list)
-
-    model = load_model('lstm.h5')
-    table_inp = []
-    tab2idx = {}
-    i = 0
-    for t in table_idx:
-        table_inp.append(table_idx[t] + " " + " ".join(tables[t].iloc[0]))
-        tab2idx[t] = i
-        i += 1
-    tab_inp = tokenizer.texts_to_sequences(table_inp)
-    tab_inp = pad_sequences(tab_inp, maxlen=q_inp_len, padding='post')
-    count1 = 0
-    count2 = 0
-    count3 = 0
-    num = 0
-    for q in questions[8000:]:
-        q_inp = [q[0]] * len(tab_inp)
-        q_inp = tokenizer.texts_to_sequences(q_inp)
-        q_inp = pad_sequences(q_inp, maxlen=q_inp_len, padding='post')
-        pre = model.predict([q_inp, tab_inp]).reshape(1, -1)
-        predictions = pre[0].argsort()[::-1]
-        if tab2idx[q[7]] in predictions[:1]:
-            count1 += 1
-            count2 += 1
-            count3 += 1
-        elif tab2idx[q[7]] in predictions[:2]:
-            count2 += 1
-            count3 += 1
-        elif tab2idx[q[7]] in predictions[:3]:
-            count3 += 1
+        if not cap_typo:
+            x += [0, 0, 0, 0, 0, 0, 0, 0, 0]
         else:
-            wrong[q[7]] += 1
-        num += 1
-    print("acc1 is:", count1 / num)
-    acc1.append(count1 / num)
-    print("acc2 is:", count2 / num)
-    acc2.append(count2 / num)
-    print("acc3 is:", count3 / num)
-    acc3.append(count3 / num)
+            x.append(sum(cap_typo))
+            x.append(sum(header_typo))
+            x.append(sum(cell_typo))
 
-print(acc1, acc2, acc3)
-print('average acc', sum(acc1) / 5, sum(acc2) / 5, sum(acc3) / 5)
-print('acc1 is', (max(acc1) + min(acc1)) / 2, '+-', (max(acc1) - min(acc1)) / 2)
-print('acc2 is', (max(acc2) + min(acc2)) / 2, '+-', (max(acc2) - min(acc2)) / 2)
-print('acc3 is', (max(acc3) + min(acc3)) / 2, '+-', (max(acc3) - min(acc3)) / 2)
-print(wrong)
+            x.append(max(cap_typo))
+            x.append(max(header_typo))
+            x.append(max(cell_typo))
+
+            x.append(mean(cap_typo))
+            x.append(mean(header_typo))
+            x.append(mean(cell_typo))
+
+        trainx.append(x)
+        trainy.append(1)
+
+        # Negative samples
+        neg_samp = random.sample(train, 2)
+        while neg_samp[0] == tab or neg_samp[1] == tab:
+            neg_samp = random.sample(train, 2)
+        for tab in neg_samp:
+            table = tables[tab]
+            cap = cap_corpus[tab]
+            header = header_corpus[tab]
+            body = cell_corpus[tab]
+
+            capc = collections.Counter(cap)
+            headerc = collections.Counter(header)
+            bodyc = collections.Counter(body)
+
+            x = list()
+            # Query length
+            x.append(len(q_tok))
+
+            # Sum of idf scores
+            x.append(sum(cap_idf[i]))
+            x.append(sum(header_idf[i]))
+            x.append(sum(cell_idf[i]))
+
+            # Max of idf scores
+            x.append(max(cap_idf[i]))
+            x.append(max(header_idf[i]))
+            x.append(max(cell_idf[i]))
+
+            # Average of idf scores
+            x.append(mean(cap_idf[i]))
+            x.append(mean(header_idf[i]))
+            x.append(mean(cell_idf[i]))
+
+            # Num of columns
+            x.append(len(list(table)))
+
+            # LCS normalized by length of query
+            que = " ".join(q_tok)
+            cap = " ".join(cap)
+            header = " ".join(header)
+            body = " ".join(body)
+
+            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
+
+            # Term frequency
+            cap_tf = [capc[tok] / sum(capc.values()) for tok in q_tok]
+            header_tf = [headerc[tok] / sum(headerc.values()) for tok in q_tok]
+            body_tf = [bodyc[tok] / sum(bodyc.values()) for tok in q_tok]
+
+            # Sum of term frequency
+            x.append(sum(cap_tf))
+            x.append(sum(header_tf))
+            x.append(sum(body_tf))
+
+            # Max of term frequency
+            x.append(max(cap_tf))
+            x.append(max(header_tf))
+            x.append(max(body_tf))
+
+            # Average of term frequency
+            x.append(mean(cap_tf))
+            x.append(mean(header_tf))
+            x.append(mean(body_tf))
+
+            # BM25 scores
+            x.append(cap_results[i][tab])
+            x.append(header_results[i][tab])
+            x.append(cell_results[i][tab])
+
+            # Fix typo
+            cap_typo = []
+            header_typo = []
+            cell_typo = []
+            for tok in q_tok:
+                if tok not in vocab:
+                    cap_typo.append(max(Levenshtein.ratio(tok, cc) for cc in capc))
+                    header_typo.append(max(Levenshtein.ratio(tok, cc) for cc in headerc))
+                    cell_typo.append(max(Levenshtein.ratio(tok, cc) for cc in bodyc))
+
+            if not cap_typo:
+                x += [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            else:
+                x.append(sum(cap_typo))
+                x.append(sum(header_typo))
+                x.append(sum(cell_typo))
+
+                x.append(max(cap_typo))
+                x.append(max(header_typo))
+                x.append(max(cell_typo))
+
+                x.append(mean(cap_typo))
+                x.append(mean(header_typo))
+                x.append(mean(cell_typo))
+
+            trainx.append(x)
+            trainy.append(0)
+
+    # Train
+    inplen = len(trainx[0])
+    trainx = np.array(trainx)
+    trainy = np.array(trainy)
+    print(trainx[:3])
+    print(trainy[:3])
+
+    model = Sequential()
+    model.add(Dense(32, input_shape=(inplen,), activation='sigmoid'))
+    model.add(Dense(1, activation='sigmoid'))
+    model.summary()
+    model.compile(optimizer='adam', loss='mse')
+    model.fit(trainx, trainy, batch_size=200, epochs=40)
+
+    # Test
+    cap_corpus = {}
+    header_corpus = {}
+    cell_corpus = {}
+    for t in test:
+        table = tables[t]
+        cap_corpus[t] = nltk.word_tokenize(table_idx[t].translate(punc_table).lower())
+        header = list(table)
+        temp = []
+        for h in header:
+            if not h.startswith('Unnamed'):
+                temp += nltk.word_tokenize(h.translate(punc_table).lower())
+        header_corpus[t] = temp
+        cells = table.applymap(str).values
+        body = ""
+        for row in cells:
+            body += " ".join(row) + " "
+        cell_corpus[t] = nltk.word_tokenize(body.translate(punc_table).lower())
+
+    vocab = []
+    for t in test:
+        vocab += cap_corpus[t]
+        vocab += header_corpus[t]
+        vocab += cell_corpus[t]
+    vocab = set(vocab)
+
+    if USEANSWER:
+        test_queries = [nltk.word_tokenize(
+            q[0].translate(punc_table).lower() + " " + " ".join(q[2:6]).translate(punc_table).lower()) for q in
+                        test_questions]
+    else:
+        test_queries = [nltk.word_tokenize(q[0].translate(punc_table).lower()) for q in test_questions]
+
+    cap_bm25 = QueryProcessor(test_queries, cap_corpus)
+    cap_results = cap_bm25.run()
+    cap_idf = cap_bm25.idf()
+
+    header_bm25 = QueryProcessor(test_queries, header_corpus)
+    header_results = header_bm25.run()
+    header_idf = header_bm25.idf()
+
+    cell_bm25 = QueryProcessor(test_queries, cell_corpus)
+    cell_results = cell_bm25.run()
+    cell_idf = cell_bm25.idf()
+
+    ap1 = 0
+    ap2 = 0
+    ap3 = 0
+    wrong = collections.Counter()
+    count = collections.Counter()
+    for i in range(len(test_questions)):
+        q = test_questions[i]
+        q_tok = test_queries[i]
+        count[q[7]] += 1
+        testx = []
+        for tab in test:
+            table = tables[tab]
+            cap = cap_corpus[tab]
+            header = header_corpus[tab]
+            body = cell_corpus[tab]
+
+            capc = collections.Counter(cap)
+            headerc = collections.Counter(header)
+            bodyc = collections.Counter(body)
+
+            x = list()
+            # Query length
+            x.append(len(q_tok))
+
+            # Sum of idf scores
+            x.append(sum(cap_idf[i]))
+            x.append(sum(header_idf[i]))
+            x.append(sum(cell_idf[i]))
+
+            # Max of idf scores
+            x.append(max(cap_idf[i]))
+            x.append(max(header_idf[i]))
+            x.append(max(cell_idf[i]))
+
+            # Average of idf scores
+            x.append(mean(cap_idf[i]))
+            x.append(mean(header_idf[i]))
+            x.append(mean(cell_idf[i]))
+
+            # Num of columns
+            x.append(len(list(table)))
+
+            # LCS normalized by length of query
+            que = " ".join(q_tok)
+            cap = " ".join(cap)
+            header = " ".join(header)
+            body = " ".join(body)
+
+            x.append(SequenceMatcher(None, que, cap).find_longest_match(0, len(que), 0, len(cap)).size / len(que))
+            x.append(SequenceMatcher(None, que, header).find_longest_match(0, len(que), 0, len(header)).size / len(que))
+            x.append(SequenceMatcher(None, que, body).find_longest_match(0, len(que), 0, len(body)).size / len(que))
+
+            # Term frequency
+            cap_tf = [capc[tok] / sum(capc.values()) for tok in q_tok]
+            header_tf = [headerc[tok] / sum(headerc.values()) for tok in q_tok]
+            body_tf = [bodyc[tok] / sum(bodyc.values()) for tok in q_tok]
+
+            # Sum of term frequency
+            x.append(sum(cap_tf))
+            x.append(sum(header_tf))
+            x.append(sum(body_tf))
+
+            # Max of term frequency
+            x.append(max(cap_tf))
+            x.append(max(header_tf))
+            x.append(max(body_tf))
+
+            # Average of term frequency
+            x.append(mean(cap_tf))
+            x.append(mean(header_tf))
+            x.append(mean(body_tf))
+
+            # BM25 scores
+            x.append(cap_results[i][tab])
+            x.append(header_results[i][tab])
+            x.append(cell_results[i][tab])
+
+            # Fix typo
+            cap_typo = []
+            header_typo = []
+            cell_typo = []
+            for tok in q_tok:
+                if tok not in vocab:
+                    cap_typo.append(max(Levenshtein.ratio(tok, cc) for cc in capc))
+                    header_typo.append(max(Levenshtein.ratio(tok, cc) for cc in headerc))
+                    cell_typo.append(max(Levenshtein.ratio(tok, cc) for cc in bodyc))
+
+            if not cap_typo:
+                x += [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            else:
+                x.append(sum(cap_typo))
+                x.append(sum(header_typo))
+                x.append(sum(cell_typo))
+
+                x.append(max(cap_typo))
+                x.append(max(header_typo))
+                x.append(max(cell_typo))
+
+                x.append(mean(cap_typo))
+                x.append(mean(header_typo))
+                x.append(mean(cell_typo))
+
+            testx.append(x)
+        testx = np.array(testx)
+        pre = model.predict(testx).reshape(1, -1)
+        predictions = pre[0].argsort()[::-1]
+        if test[predictions[0]] == q[7]:
+            ap1 += 1
+            ap2 += 1
+            ap3 += 1
+        # elif test[predictions[1]] == q[7]:
+        #     ap2 += 0.5
+        #     ap3 += 0.5
+        # elif test[predictions[2]] == q[7]:
+        #     ap3 += 1/3
+        else:
+            print(q[0])
+            print(q[2:6])
+            print("Pre:", test[predictions[0]], ", gold:", q[7])
+    print(ap1 / len(test_questions))
+    print(ap2 / len(test_questions))
+    print(ap3 / len(test_questions))
+
+
+if __name__ == '__main__':
+    main()

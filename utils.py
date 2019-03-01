@@ -2,6 +2,17 @@ import csv
 from os import listdir
 import pandas as pd
 import numpy as np
+from math import sqrt
+
+
+def square_rooted(x):
+    return round(sqrt(sum([a * a for a in x])), 3)
+
+
+def cosine_similarity(x, y):
+    numerator = sum(a * b for a, b in zip(x, y))
+    denominator = square_rooted(x) * square_rooted(y)
+    return round(numerator / denominator, 3)
 
 
 def load_data():
@@ -35,7 +46,7 @@ def getEmbeddingMatrix(wordIndex):
     Populate an embedding matrix using a word-index. If the word "happy" has an index 19,
        the 19th row in the embedding matrix should contain the embedding vector for the word "happy".
     Input:
-        wordIndex : A dictionary of (word : index) pairs, extracted using a tokeniser
+        wordIndex : A dictionary of (word : index) pairs, extracted using a tokenizer
     Output:
         embeddingMatrix : A matrix where every row has 300 dimensional GloVe embedding
     """
