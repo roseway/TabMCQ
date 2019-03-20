@@ -3,6 +3,7 @@ from os import listdir
 import pandas as pd
 import numpy as np
 from math import sqrt
+import nltk
 
 
 def square_rooted(x):
@@ -68,3 +69,11 @@ def getEmbeddingMatrix(wordIndex):
             # words not found in embedding index will be all-zeros.
             embeddingMatrix[i] = embeddingVector
     return embeddingMatrix
+
+
+def jaccard_ngram(string1, string2):
+    ng1_chars = set(nltk.ngrams(string1, n=3, pad_left=True, pad_right=True, left_pad_symbol=' ', right_pad_symbol=' '))
+    ng2_chars = set(nltk.ngrams(string2, n=3, pad_left=True, pad_right=True, left_pad_symbol=' ', right_pad_symbol=' '))
+    if not ng1_chars or not ng2_chars:
+        return 0
+    return 1 - nltk.jaccard_distance(ng1_chars, ng2_chars)

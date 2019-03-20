@@ -2,27 +2,26 @@ from bm25.query import QueryProcessor
 import operator
 from utils import *
 import nltk
+import random
 import collections
 
 
 def main():
     USEANSWER = True
+    random.seed(0)
+    np.random.seed(0)
 
     questions, tables, table_idx = load_data()
-    test = ['regents-02', 'regents-03', 'regents-08', 'regents-13', 'regents-17', 'regents-19', 'regents-22',
-            'regents-25&26', 'regents-42', 'monarch-44', 'monarch-47', 'monarch-50', 'monarch-53', 'monarch-57',
-            'monarch-62', 'monarch-64']
-    # test = [t for t in table_idx if t not in train]
+    random.shuffle(questions)
 
-    # test = list(table_idx)
     if USEANSWER:
-        queries = [nltk.word_tokenize(q[0].lower() + " " + " ".join(q[2:6])) for q in questions if q[7] in test]
+        queries = [nltk.word_tokenize(q[0].lower() + " " + " ".join(q[2:6])) for q in questions[8200:]]
     else:
-        queries = [nltk.word_tokenize(q[0].lower()) for q in questions if q[7] in test]
-    reltable = [q[7] for q in questions if q[7] in test]
+        queries = [nltk.word_tokenize(q[0].lower()) for q in questions[8200:]]
+    reltable = [q[7] for q in questions[8200:]]
     corpus = {}
 
-    for t in test:
+    for t in table_idx:
         table = tables[t]
         header = list(table)
         cells = table.applymap(str).values
